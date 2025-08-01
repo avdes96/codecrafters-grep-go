@@ -37,6 +37,22 @@ func main() {
 }
 
 func matchLine(line []byte, pattern string) (bool, error) {
+	switch pattern {
+	case "\\d":
+		return matchDigit(line)
+	default:
+		return matchLiteralChar(line, pattern)
+	}
+}
+
+const digits string = "0123456789"
+
+func matchDigit(line []byte) (bool, error) {
+	ok := bytes.ContainsAny(line, digits)
+	return ok, nil
+}
+
+func matchLiteralChar(line []byte, pattern string) (bool, error) {
 	if utf8.RuneCountInString(pattern) != 1 {
 		return false, fmt.Errorf("unsupported pattern: %q", pattern)
 	}
