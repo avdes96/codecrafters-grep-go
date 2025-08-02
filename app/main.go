@@ -1,11 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
-	"unicode/utf8"
+	"unicode"
 )
 
 // Usage: echo <input_text> | your_program.sh -E <pattern>
@@ -17,7 +16,9 @@ func main() {
 
 	pattern := os.Args[2]
 
-	line, err := io.ReadAll(os.Stdin) // assume we're only dealing with a single line
+	input, err := io.ReadAll(os.Stdin) // assume we're only dealing with a single line
+	line := string(input)
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: read input text: %v\n", err)
 		os.Exit(2)
@@ -36,28 +37,55 @@ func main() {
 	// default exit code is 0 which means success
 }
 
-func matchLine(line []byte, pattern string) (bool, error) {
+func matchLine(line string, pattern string) (bool, error) {
 	switch pattern {
 	case "\\d":
-		return matchDigit(line)
+		return matchDigit(line), nil
+	case "\\w":
+		return matchWordCharacterClass(line), nil
 	default:
 		return matchLiteralChar(line, pattern)
 	}
 }
 
-const digits string = "0123456789"
-
-func matchDigit(line []byte) (bool, error) {
-	ok := bytes.ContainsAny(line, digits)
-	return ok, nil
+func matchDigit(line string) bool {
+	for _, c := range line {
+		if unicode.IsDigit(rune(c)) {
+			return true
+		}
+	}
+	return false
 }
 
-func matchLiteralChar(line []byte, pattern string) (bool, error) {
-	if utf8.RuneCountInString(pattern) != 1 {
-		return false, fmt.Errorf("unsupported pattern: %q", pattern)
+func matchWordCharacterClass(line string) bool {
+	for _, b := range line {
+		r := rune(b)
+		if r == '_' {
+			return true
+		}
+		if unicode.IsDigit(r) {
+			return true
+		}
+		if unicode.IsUpper(r) {
+			return true
+		}
+		if unicode.IsLower(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchLiteralChar(line string, pattern string) (bool, error) {
+	if len(pattern) != 1 {
+		return false, fmt.Errorf("expected pattern of len 1, got %s of len %d", pattern, len(pattern))
 	}
 
-	ok := bytes.ContainsAny(line, pattern)
+	for _, c := range line {
+		if string(c) == pattern {
+			return true, nil
+		}
+	}
 
-	return ok, nil
+	return false, nil
 }
