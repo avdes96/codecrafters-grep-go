@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"unicode"
+
+	mapset "github.com/deckarep/golang-set/v2"
 )
 
 // Usage: echo <input_text> | your_program.sh -E <pattern>
@@ -38,6 +40,12 @@ func main() {
 }
 
 func matchLine(line string, pattern string) (bool, error) {
+	if pattern == "" {
+		return true, nil
+	}
+	if pattern[0] == '[' && pattern[len(pattern)-1] == ']' {
+		return matchPositiveCharacterGroup(line, pattern[1:len(pattern)-1])
+	}
 	switch pattern {
 	case "\\d":
 		return matchDigit(line), nil
@@ -46,6 +54,22 @@ func matchLine(line string, pattern string) (bool, error) {
 	default:
 		return matchLiteralChar(line, pattern)
 	}
+}
+
+func matchPositiveCharacterGroup(line string, chars string) (bool, error) {
+	if chars == "" {
+		return false, fmt.Errorf("unmatched [")
+	}
+	charSet := mapset.NewSet[rune]()
+	for _, c := range chars {
+		charSet.Add(c)
+	}
+	for _, c := range line {
+		if charSet.Contains(c) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func matchDigit(line string) bool {
