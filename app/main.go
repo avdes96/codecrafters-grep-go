@@ -43,8 +43,17 @@ func matchLine(line string, pattern string) (bool, error) {
 	if pattern == "" {
 		return true, nil
 	}
-	if pattern[0] == '[' && pattern[len(pattern)-1] == ']' {
-		return matchPositiveCharacterGroup(line, pattern[1:len(pattern)-1])
+	if pattern[0] == '[' {
+		if len(pattern) == 2 {
+			return false, fmt.Errorf("unmatched [")
+		}
+		if pattern[1] != '^' {
+			return matchPositiveCharacterGroup(line, pattern[1:len(pattern)-1]), nil
+		}
+		if pattern[2] == ']' {
+			return false, fmt.Errorf("unmatched [")
+		}
+		return matchNegativeCharacterGroup(line, pattern[2:len(pattern)-1]), nil
 	}
 	switch pattern {
 	case "\\d":
@@ -56,20 +65,32 @@ func matchLine(line string, pattern string) (bool, error) {
 	}
 }
 
-func matchPositiveCharacterGroup(line string, chars string) (bool, error) {
-	if chars == "" {
-		return false, fmt.Errorf("unmatched [")
+func matchPositiveCharacterGroup(line string, chars string) bool {
+	charSet := newCharSet(chars)
+	for _, c := range line {
+		if charSet.Contains(c) {
+			return true
+		}
 	}
+	return false
+}
+
+func matchNegativeCharacterGroup(line string, chars string) bool {
+	charSet := newCharSet(chars)
+	for _, c := range line {
+		if !charSet.Contains(c) {
+			return true
+		}
+	}
+	return false
+}
+
+func newCharSet(chars string) mapset.Set[rune] {
 	charSet := mapset.NewSet[rune]()
 	for _, c := range chars {
 		charSet.Add(c)
 	}
-	for _, c := range line {
-		if charSet.Contains(c) {
-			return true, nil
-		}
-	}
-	return false, nil
+	return charSet
 }
 
 func matchDigit(line string) bool {
