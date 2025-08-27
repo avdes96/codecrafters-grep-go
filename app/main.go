@@ -27,7 +27,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	ok, err := matchLine(line, pattern, 0, 0)
+	ok, err := matchLine(line, pattern)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(2)
@@ -40,7 +40,20 @@ func main() {
 	// default exit code is 0 which means success
 }
 
-func matchLine(line []rune, pattern []rune, lineIdx int, patternIdx int) (bool, error) {
+func matchLine(line []rune, pattern []rune) (bool, error) {
+	for lineIdx := range len(line) {
+		m, err := match(line, pattern, lineIdx, 0)
+		if err != nil {
+			return false, err
+		}
+		if m {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func match(line []rune, pattern []rune, lineIdx int, patternIdx int) (bool, error) {
 	if patternIdx == len(pattern) {
 		return true, nil
 	}
@@ -48,14 +61,18 @@ func matchLine(line []rune, pattern []rune, lineIdx int, patternIdx int) (bool, 
 		return false, nil
 	}
 	lineChar := line[lineIdx]
-	patternMatcher, _, err := getMatcher(pattern, patternIdx)
+	patternMatcher, newPatternIdx, err := getMatcher(pattern, patternIdx)
 	if err != nil {
 		return false, err
 	}
-	if patternMatcher.Match(lineChar) {
-		return true, nil
+	if !patternMatcher.Match(lineChar) {
+		return false, nil
 	}
-	return matchLine(line, pattern, lineIdx+1, 0)
+	match, err := match(line, pattern, lineIdx+1, newPatternIdx)
+	if err != nil {
+		return false, err
+	}
+	return match, nil
 }
 
 func getMatcher(pattern []rune, patternIdx int) (matcher.Matcher, int, error) {
@@ -85,6 +102,8 @@ func getCharacterClassMatcher(pattern []rune, patternIdx int) (matcher.Matcher, 
 		return matcher.NewDigitMatcher(), patternIdx + 1, nil
 	case 'w':
 		return matcher.NewWordCharacterMatcher(), patternIdx + 1, nil
+	case '\\':
+		return matcher.NewLiteralCharMatcher(rune('\\')), patternIdx + 1, nil
 	}
 	return nil, -1, fmt.Errorf("invalid pattern: invalid character class %q", pattern[patternIdx])
 
@@ -118,15 +137,16 @@ func getNegCharacterGroupMatcher(pattern []rune, patternIdx int) (matcher.Matche
 
 func extractChars(pattern []rune, patternIdx int) (mapset.Set[rune], int, error) {
 	charSet := mapset.NewSet[rune]()
-	for patternIdx < len(pattern) {
-		if pattern[patternIdx] == ']' {
+	newPatternIdx := patternIdx
+	for newPatternIdx < len(pattern) {
+		if pattern[newPatternIdx] == ']' {
 			if charSet.IsEmpty() {
 				return nil, -1, fmt.Errorf("invalid pattern: character group contains no characters")
 			}
-			return charSet, patternIdx + 1, nil
+			return charSet, newPatternIdx + 1, nil
 		}
-		charSet.Add(rune(pattern[patternIdx]))
-		patternIdx++
+		charSet.Add(rune(pattern[newPatternIdx]))
+		newPatternIdx++
 	}
 	return nil, -1, fmt.Errorf("invalid pattern: unmatched [")
 }
