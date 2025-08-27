@@ -41,6 +41,12 @@ func main() {
 }
 
 func matchLine(line []rune, pattern []rune) (bool, error) {
+	if len(pattern) == 0 {
+		return true, nil
+	}
+	if pattern[0] == '^' {
+		return match(line, pattern, 0, 1)
+	}
 	for lineIdx := range len(line) {
 		m, err := match(line, pattern, lineIdx, 0)
 		if err != nil {
