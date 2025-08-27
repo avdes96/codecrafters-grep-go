@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"unicode"
 
+	"github.com/codecrafters-io/grep-starter-go/app/matcher"
 	mapset "github.com/deckarep/golang-set/v2"
 )
 
@@ -16,17 +16,18 @@ func main() {
 		os.Exit(2) // 1 means no lines were selected, >1 means error
 	}
 
-	pattern := os.Args[2]
+	patternStr := os.Args[2]
 
 	input, err := io.ReadAll(os.Stdin) // assume we're only dealing with a single line
-	line := string(input)
+	line := []rune(string(input))
+	pattern := []rune(patternStr)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: read input text: %v\n", err)
 		os.Exit(2)
 	}
 
-	ok, err := matchLine(line, pattern)
+	ok, err := matchLine(line, pattern, 0, 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(2)
@@ -39,98 +40,93 @@ func main() {
 	// default exit code is 0 which means success
 }
 
-func matchLine(line string, pattern string) (bool, error) {
-	if pattern == "" {
+func matchLine(line []rune, pattern []rune, lineIdx int, patternIdx int) (bool, error) {
+	if patternIdx == len(pattern) {
 		return true, nil
 	}
-	if pattern[0] == '[' {
-		if len(pattern) == 2 {
-			return false, fmt.Errorf("unmatched [")
-		}
-		if pattern[1] != '^' {
-			return matchPositiveCharacterGroup(line, pattern[1:len(pattern)-1]), nil
-		}
-		if pattern[2] == ']' {
-			return false, fmt.Errorf("unmatched [")
-		}
-		return matchNegativeCharacterGroup(line, pattern[2:len(pattern)-1]), nil
+	if lineIdx == len(line) {
+		return false, nil
 	}
-	switch pattern {
-	case "\\d":
-		return matchDigit(line), nil
-	case "\\w":
-		return matchWordCharacterClass(line), nil
-	default:
-		return matchLiteralChar(line, pattern)
+	lineChar := line[lineIdx]
+	patternMatcher, _, err := getMatcher(pattern, patternIdx)
+	if err != nil {
+		return false, err
 	}
+	if patternMatcher.Match(lineChar) {
+		return true, nil
+	}
+	return matchLine(line, pattern, lineIdx+1, 0)
 }
 
-func matchPositiveCharacterGroup(line string, chars string) bool {
-	charSet := newCharSet(chars)
-	for _, c := range line {
-		if charSet.Contains(c) {
-			return true
+func getMatcher(pattern []rune, patternIdx int) (matcher.Matcher, int, error) {
+	switch pattern[patternIdx] {
+	case '\\':
+		m, newPatternIdx, err := getCharacterClassMatcher(pattern, patternIdx+1)
+		if err != nil {
+			return nil, -1, err
 		}
+		return m, newPatternIdx, nil
+	case '[':
+		m, newPatternIdx, err := getCharacterGroupMatcher(pattern, patternIdx+1)
+		if err != nil {
+			return nil, -1, err
+		}
+		return m, newPatternIdx, nil
 	}
-	return false
+	return matcher.NewLiteralCharMatcher(rune(pattern[patternIdx])), patternIdx + 1, nil
 }
 
-func matchNegativeCharacterGroup(line string, chars string) bool {
-	charSet := newCharSet(chars)
-	for _, c := range line {
-		if !charSet.Contains(c) {
-			return true
-		}
+func getCharacterClassMatcher(pattern []rune, patternIdx int) (matcher.Matcher, int, error) {
+	if patternIdx == len(pattern) {
+		return nil, -1, fmt.Errorf("invalid pattern: incomplete character class")
 	}
-	return false
+	switch pattern[patternIdx] {
+	case 'd':
+		return matcher.NewDigitMatcher(), patternIdx + 1, nil
+	case 'w':
+		return matcher.NewWordCharacterMatcher(), patternIdx + 1, nil
+	}
+	return nil, -1, fmt.Errorf("invalid pattern: invalid character class %q", pattern[patternIdx])
+
 }
 
-func newCharSet(chars string) mapset.Set[rune] {
+func getCharacterGroupMatcher(pattern []rune, patternIdx int) (matcher.Matcher, int, error) {
+	if patternIdx == len(pattern) {
+		return nil, -1, fmt.Errorf("invalid pattern: unmatched [")
+	}
+	if pattern[patternIdx] == '^' {
+		return getNegCharacterGroupMatcher(pattern, patternIdx+1)
+	}
+	return getPosCharacterGroupMatcher(pattern, patternIdx)
+}
+
+func getPosCharacterGroupMatcher(pattern []rune, patternIdx int) (matcher.Matcher, int, error) {
+	chars, newPatternIdx, err := extractChars(pattern, patternIdx)
+	if err != nil {
+		return nil, -1, err
+	}
+	return matcher.NewPosCharacterGroupMatcher(chars), newPatternIdx, nil
+}
+
+func getNegCharacterGroupMatcher(pattern []rune, patternIdx int) (matcher.Matcher, int, error) {
+	chars, newPatternIdx, err := extractChars(pattern, patternIdx)
+	if err != nil {
+		return nil, -1, err
+	}
+	return matcher.NewNegCharacterGroupMatcher(chars), newPatternIdx, nil
+}
+
+func extractChars(pattern []rune, patternIdx int) (mapset.Set[rune], int, error) {
 	charSet := mapset.NewSet[rune]()
-	for _, c := range chars {
-		charSet.Add(c)
+	for patternIdx < len(pattern) {
+		if pattern[patternIdx] == ']' {
+			if charSet.IsEmpty() {
+				return nil, -1, fmt.Errorf("invalid pattern: character group contains no characters")
+			}
+			return charSet, patternIdx + 1, nil
+		}
+		charSet.Add(rune(pattern[patternIdx]))
+		patternIdx++
 	}
-	return charSet
-}
-
-func matchDigit(line string) bool {
-	for _, c := range line {
-		if unicode.IsDigit(rune(c)) {
-			return true
-		}
-	}
-	return false
-}
-
-func matchWordCharacterClass(line string) bool {
-	for _, b := range line {
-		r := rune(b)
-		if r == '_' {
-			return true
-		}
-		if unicode.IsDigit(r) {
-			return true
-		}
-		if unicode.IsUpper(r) {
-			return true
-		}
-		if unicode.IsLower(r) {
-			return true
-		}
-	}
-	return false
-}
-
-func matchLiteralChar(line string, pattern string) (bool, error) {
-	if len(pattern) != 1 {
-		return false, fmt.Errorf("expected pattern of len 1, got %s of len %d", pattern, len(pattern))
-	}
-
-	for _, c := range line {
-		if string(c) == pattern {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return nil, -1, fmt.Errorf("invalid pattern: unmatched [")
 }
