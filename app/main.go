@@ -45,10 +45,10 @@ func matchLine(line []rune, pattern []rune) (bool, error) {
 		return true, nil
 	}
 	if pattern[0] == '^' {
-		return match(line, pattern, 0, 1)
+		return match(line, pattern, 0, 1, nil)
 	}
 	for lineIdx := range len(line) {
-		m, err := match(line, pattern, lineIdx, 0)
+		m, err := match(line, pattern, lineIdx, 0, nil)
 		if err != nil {
 			return false, err
 		}
@@ -59,21 +59,27 @@ func matchLine(line []rune, pattern []rune) (bool, error) {
 	return false, nil
 }
 
-func match(line []rune, pattern []rune, lineIdx int, patternIdx int) (bool, error) {
+func match(line []rune, pattern []rune, lineIdx int, patternIdx int, prevMatcher matcher.Matcher) (bool, error) {
 	if patternIdx == len(pattern) {
 		return true, nil
 	}
-	if pattern[patternIdx] == '$' {
+	patternChar := pattern[patternIdx]
+	if patternChar == '$' {
 		// Matching end of string anchor can probably be made more efficient, fine for now
 		if lineIdx == len(line) {
 			return true, nil
 		}
 		return false, nil
 	}
+
 	if lineIdx == len(line) {
 		return false, nil
 	}
 	lineChar := line[lineIdx]
+	if patternChar == '+' {
+		return matchOneOrMore(line, pattern, lineIdx, patternIdx+1, prevMatcher)
+	}
+
 	patternMatcher, newPatternIdx, err := getMatcher(pattern, patternIdx)
 	if err != nil {
 		return false, err
@@ -81,11 +87,31 @@ func match(line []rune, pattern []rune, lineIdx int, patternIdx int) (bool, erro
 	if !patternMatcher.Match(lineChar) {
 		return false, nil
 	}
-	match, err := match(line, pattern, lineIdx+1, newPatternIdx)
+	match, err := match(line, pattern, lineIdx+1, newPatternIdx, patternMatcher)
 	if err != nil {
 		return false, err
 	}
 	return match, nil
+}
+
+func matchOneOrMore(line []rune, pattern []rune, lineIdx int, patternIdx int, prevMatcher matcher.Matcher) (bool, error) {
+	if prevMatcher == nil {
+		return false, fmt.Errorf("no previous char available to match")
+	}
+	if lineIdx == len(line) {
+		return true, nil
+	}
+	if prevMatcher.Match(line[lineIdx]) {
+		m, err := matchOneOrMore(line, pattern, lineIdx+1, patternIdx, prevMatcher)
+		if err != nil {
+			return false, err
+		}
+		if m {
+			return true, nil
+		}
+	}
+	return match(line, pattern, lineIdx, patternIdx, nil)
+
 }
 
 func getMatcher(pattern []rune, patternIdx int) (matcher.Matcher, int, error) {
