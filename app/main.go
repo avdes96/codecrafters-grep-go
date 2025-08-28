@@ -63,6 +63,13 @@ func match(line []rune, pattern []rune, lineIdx int, patternIdx int) (bool, erro
 	if patternIdx == len(pattern) {
 		return true, nil
 	}
+	if pattern[patternIdx] == '$' {
+		// Matching end of string anchor can probably be made more efficient, fine for now
+		if lineIdx == len(line) {
+			return true, nil
+		}
+		return false, nil
+	}
 	if lineIdx == len(line) {
 		return false, nil
 	}
