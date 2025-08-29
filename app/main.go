@@ -84,14 +84,17 @@ func match(line []rune, pattern []rune, lineIdx int, patternIdx int, prevMatcher
 	if err != nil {
 		return false, err
 	}
+	zeroOrOneQuantifierNext := zeroOrOneQuantifierAtIdx(pattern, newPatternIdx)
+	if zeroOrOneQuantifierNext {
+		newPatternIdx++
+	}
 	if !patternMatcher.Match(lineChar) {
-		return false, nil
+		if !zeroOrOneQuantifierNext {
+			return false, nil
+		}
+		return match(line, pattern, lineIdx, newPatternIdx, prevMatcher)
 	}
-	match, err := match(line, pattern, lineIdx+1, newPatternIdx, patternMatcher)
-	if err != nil {
-		return false, err
-	}
-	return match, nil
+	return match(line, pattern, lineIdx+1, newPatternIdx, patternMatcher)
 }
 
 func matchOneOrMore(line []rune, pattern []rune, lineIdx int, patternIdx int, prevMatcher matcher.Matcher) (bool, error) {
@@ -112,6 +115,13 @@ func matchOneOrMore(line []rune, pattern []rune, lineIdx int, patternIdx int, pr
 	}
 	return match(line, pattern, lineIdx, patternIdx, nil)
 
+}
+
+func zeroOrOneQuantifierAtIdx(pattern []rune, idx int) bool {
+	if idx >= len(pattern) {
+		return false
+	}
+	return pattern[idx] == '?'
 }
 
 func getMatcher(pattern []rune, patternIdx int) (matcher.Matcher, int, error) {
