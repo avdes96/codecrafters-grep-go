@@ -77,3 +77,13 @@ func NewNegCharacterGroupMatcher(chars mapset.Set[rune]) *NegCharacterGroupMatch
 func (m *NegCharacterGroupMatcher) Match(char rune) bool {
 	return !m.chars.Contains(char)
 }
+
+type WildCardMatcher struct{}
+
+func NewWildcardMatcher() *WildCardMatcher {
+	return &WildCardMatcher{}
+}
+
+func (m *WildCardMatcher) Match(char rune) bool {
+	return true
+}

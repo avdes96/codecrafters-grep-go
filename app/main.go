@@ -102,7 +102,7 @@ func matchOneOrMore(line []rune, pattern []rune, lineIdx int, patternIdx int, pr
 		return false, fmt.Errorf("no previous char available to match")
 	}
 	if lineIdx == len(line) {
-		return true, nil
+		return patternIdx == len(pattern)-1, nil
 	}
 	if prevMatcher.Match(line[lineIdx]) {
 		m, err := matchOneOrMore(line, pattern, lineIdx+1, patternIdx, prevMatcher)
@@ -138,6 +138,8 @@ func getMatcher(pattern []rune, patternIdx int) (matcher.Matcher, int, error) {
 			return nil, -1, err
 		}
 		return m, newPatternIdx, nil
+	case '.':
+		return matcher.NewWildcardMatcher(), patternIdx + 1, nil
 	}
 	return matcher.NewLiteralCharMatcher(rune(pattern[patternIdx])), patternIdx + 1, nil
 }
